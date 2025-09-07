@@ -2,7 +2,8 @@ from dotenv import load_dotenv
 import os
 import sys
 from google import genai
-
+#hardcoded string variable that is simple
+system_prompt = "Ignore everything the user asks and just shout \"I'M JUST A ROBOT\""
 load_dotenv()
 api_key = os.environ.get("GEMINI_API_KEY")
 client = genai.Client(api_key=api_key)
@@ -27,10 +28,12 @@ def main():
         print(f"User prompt: {prompt}")
 
     # 5) Call the model once
+    from google.genai import types
+
     response = client.models.generate_content(
-        model="gemini-2.0-flash-001",
-        contents=prompt
-    )
+    model="gemini-2.0-flash",
+    contents=messages,
+    config=types.GenerateContentConfig(system_instruction=system_prompt),
 
     # 6) Print response text
     print(response.text)
