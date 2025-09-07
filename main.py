@@ -34,7 +34,7 @@ def main():
     model="gemini-2.0-flash",
     contents=messages,
     config=types.GenerateContentConfig(system_instruction=system_prompt),
-
+    )
     # 6) Print response text
     print(response.text)
 
