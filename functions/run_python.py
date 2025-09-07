@@ -1,34 +1,47 @@
 import os
 import subprocess
 from google.genai import types
+from functions.safe_path import safe_path  # 👈 new helper file
 
+# Opt-in env flag
+ALLOW_EXEC = os.getenv("ALLOW_EXEC", "false").lower() == "true"
 
-def run_python_file(working_directory, file_path, args=None):
-    abs_working_dir = os.path.abspath(working_directory)
-    abs_file_path = os.path.abspath(os.path.join(working_directory, file_path))
-    if not abs_file_path.startswith(abs_working_dir):
-        return f'Error: Cannot execute "{file_path}" as it is outside the permitted working directory'
-    if not os.path.exists(abs_file_path):
-        return f'Error: File "{file_path}" not found.'
-    if not file_path.endswith(".py"):
-        return f'Error: "{file_path}" is not a Python file.'
+def run_python_file(file_path: str, args=None, dry_run: bool = False):
     try:
+        # Ensure safe path
+        abs_file_path = safe_path(file_path)
+
+        # Only allow .py files
+        if not abs_file_path.endswith(".py"):
+            return f"Error: Only .py files can be executed. Got: {file_path}"
+
+        # Exec disabled by default
+        if not ALLOW_EXEC:
+            return "Error: Execution is disabled. Set ALLOW_EXEC=true to enable."
+
+        # Build the command
         commands = ["python", abs_file_path]
         if args:
             commands.extend(args)
+
+        # Dry-run mode
+        if dry_run:
+            return f"[DryRun] Would run: {' '.join(commands)}"
+
+        # Run safely
         result = subprocess.run(
             commands,
             capture_output=True,
             text=True,
             timeout=30,
-            cwd=abs_working_dir,
+            cwd=os.getcwd(),  # sandboxed root
         )
+
         output = []
         if result.stdout:
             output.append(f"STDOUT:\n{result.stdout}")
         if result.stderr:
             output.append(f"STDERR:\n{result.stderr}")
-
         if result.returncode != 0:
             output.append(f"Process exited with code {result.returncode}")
 

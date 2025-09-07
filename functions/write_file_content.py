@@ -1,25 +1,40 @@
 import os
 from google.genai import types
+from functions.safe_path import safe_path  # 👈 create this helper file once
 
+# Writes disabled by default
+ALLOW_WRITES = os.getenv("ALLOW_WRITES", "false").lower() == "true"
 
-def write_file(working_directory, file_path, content):
-    abs_working_dir = os.path.abspath(working_directory)
-    abs_file_path = os.path.abspath(os.path.join(working_directory, file_path))
-    if not abs_file_path.startswith(abs_working_dir):
-        return f'Error: Cannot write to "{file_path}" as it is outside the permitted working directory'
-    if not os.path.exists(abs_file_path):
-        try:
-            os.makedirs(os.path.dirname(abs_file_path), exist_ok=True)
-        except Exception as e:
-            return f"Error: creating directory: {e}"
-    if os.path.exists(abs_file_path) and os.path.isdir(abs_file_path):
-        return f'Error: "{file_path}" is a directory, not a file'
+def write_file(working_directory, file_path, content, dry_run: bool = False):
     try:
-        with open(abs_file_path, "w") as f:
+        abs_working_dir = os.path.abspath(working_directory)
+        abs_file_path = safe_path(file_path, abs_working_dir)  # 👈 enforce sandbox
+
+        # Writes disabled unless explicitly enabled
+        if not ALLOW_WRITES:
+            return (
+                f"Error: Writing is disabled by default. "
+                f"Set ALLOW_WRITES=true in your environment to enable."
+            )
+
+        # Dry-run mode
+        if dry_run:
+            return (
+                f"[DryRun] Would write {len(content)} characters to: {abs_file_path}\n"
+                f"---\n{content}\n---"
+            )
+
+        # Ensure parent directories exist
+        os.makedirs(os.path.dirname(abs_file_path), exist_ok=True)
+
+        if os.path.exists(abs_file_path) and os.path.isdir(abs_file_path):
+            return f'Error: "{file_path}" is a directory, not a file'
+
+        with open(abs_file_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return (
-            f'Successfully wrote to "{file_path}" ({len(content)} characters written)'
-        )
+
+        return f'Successfully wrote to "{file_path}" ({len(content)} characters written)'
+
     except Exception as e:
         return f"Error: writing to file: {e}"
 
