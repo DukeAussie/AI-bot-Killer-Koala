@@ -93,10 +93,39 @@ Example: Exploring the repo and running tests.
    "Run tests.py"
    - It will call run_python_file with a ⚠️ warning and show results.
 
-This workflow ensures you can safely explore in SAFE MODE and only switch
-to UNSAFE MODE when you explicitly want to make changes or run code.
+
+PROTECTED FILES & DIRECTORIES
+-----------------------------
+
+Even in `--unsafe` mode, the following are **blocked** for safety:
+
+- `main.py`
+- `config.py`
+- `prompts.py`
+- `call_function.py`
+
+Protected directories:
+- `functions/`
+- `tests/`
+
+This prevents the AI from rewriting or executing its own core logic.
+You can adjust the protection list in `config.py`.
+
+
+SECURITY MODEL
+--------------
+
+- SAFE MODE (default):
+  - No writes
+  - No execution
+  - Exploration only
+
+- UNSAFE MODE (`--unsafe`):
+  - Writes and execution allowed
+  - ⚠️ Warnings shown before dangerous actions
+  - Still respects protected files/directories above
+
 
 -------------------------------------------------
 SAFE MODE is the default. UNSAFE MODE is opt-in.
 Always review warnings before allowing writes or execution.
--------------------------------------------------

@@ -1,53 +1,10 @@
-import argparse
-from google import genai
-from google.genai import types
+import os
 from dotenv import load_dotenv
+from google import genai
+from google.genai import  types
 
-from functions.call_function import call_function, available_functions
-from config import system_prompt
-
-
-def main():
-    load_dotenv()
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument(
-        "--unsafe",
-        action="store_true",
-        help="Allow write/exec (⚠ dangerous, use only locally)",
-    )
-    args = parser.parse_args()
-
-    dry_run = not args.unsafe  # ✅ safe mode default
-
-    if args.unsafe:
-        print(
-            "\n⚠️  UNSAFE MODE ENABLED ⚠️\n"
-            "Writes and subprocess execution are now allowed!\n"
-            "Only use this mode locally — DO NOT run in production.\n"
-        )
-
-    # Inject SAFE/UNSAFE mode into system prompt
-    mode_message = (
-        "Current mode: SAFE — only read operations are allowed."
-        if dry_run
-        else "Current mode: UNSAFE — write and execution tools are available."
-    )
-    system_instruction = f"{system_prompt}\n\n{mode_message}"
-
-    client = genai.Client(api_key=None)  # assumes GEMINI_API_KEY in .env
-    messages = []  # conversation history
-
-    try:
-        while True:
-            final_response = generate_content(
-                client, messages, args.verbose, dry_run, system_instruction
-            )
-            print(final_response)
-            break
-    except Exception as e:
-        print(f"Error in generate_content: {e}")
+# ✅ import from root-level call_function.py
+from call_function import call_function, available_functions
 
 
 def generate_content(client, messages, verbose, dry_run, system_instruction):
@@ -91,6 +48,39 @@ def generate_content(client, messages, verbose, dry_run, system_instruction):
         raise Exception("no function responses generated, exiting.")
 
     messages.append(types.Content(role="user", parts=function_responses))
+
+
+def main():
+    load_dotenv()
+    api_key = os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        raise ValueError("❌ GEMINI_API_KEY not set in environment")
+
+    client = genai.Client(api_key=api_key)
+
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("prompt", type=str, nargs="*", help="Prompt to send to Killer Koala")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--unsafe", action="store_true", help="Enable unsafe mode (allow writes/exec)")
+    args = parser.parse_args()
+
+    prompt = " ".join(args.prompt)
+    verbose = args.verbose
+    dry_run = not args.unsafe
+
+    if verbose:
+        print(f"Running in {'UNSAFE' if not dry_run else 'SAFE'} mode")
+
+    system_instruction = "You are Killer Koala, an assistant that can explore files and run code."
+
+    messages = [types.Content(role="user", parts=[types.Part.from_text(text=prompt)])]
+
+    result = generate_content(client, messages, verbose, dry_run, system_instruction)
+
+    if result:
+        print(result)
 
 
 if __name__ == "__main__":

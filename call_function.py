@@ -1,88 +1,16 @@
+# call_function.py
 from google.genai import types
 from functions.get_files_info import get_files_info
 from functions.get_file_content import get_file_content
-from functions.run_python_file import run_python_file
-from functions.write_file import write_file
+from functions.run_python import run_python_file as run_python  # ✅ alias fixed
+from functions.write_file_content import write_file
 from config import WORKING_DIR
-
-# Tool schemas with safety notes
-schema_get_files_info = types.FunctionDeclaration(
-    name="get_files_info",
-    description="List files and directories in the working directory (safe).",
-    parameters={
-        "type": "object",
-        "properties": {
-            "directory": {"type": "string", "description": "Relative directory path"},
-        },
-    },
-)
-
-schema_get_file_content = types.FunctionDeclaration(
-    name="get_file_content",
-    description="Read file contents from the working directory (safe).",
-    parameters={
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string", "description": "Relative path to file"},
-        },
-        "required": ["file_path"],
-    },
-)
-
-schema_write_file = types.FunctionDeclaration(
-    name="write_file",
-    description=(
-        "⚠️ Write or overwrite a file. "
-        "This is only allowed when UNSAFE MODE is enabled. "
-        "In safe mode, this will be blocked."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string", "description": "Relative path to file"},
-            "content": {"type": "string", "description": "New file contents"},
-        },
-        "required": ["file_path", "content"],
-    },
-)
-
-schema_run_python_file = types.FunctionDeclaration(
-    name="run_python_file",
-    description=(
-        "⚠️ Execute a Python file with optional arguments. "
-        "This is only allowed when UNSAFE MODE is enabled. "
-        "In safe mode, this will be blocked."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "file_path": {"type": "string", "description": "Relative path to Python file"},
-            "arguments": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Optional command-line arguments",
-            },
-        },
-        "required": ["file_path"],
-    },
-)
-
-# Bundle available functions
-available_functions = types.Tool(
-    function_declarations=[
-        schema_get_files_info,
-        schema_get_file_content,
-        schema_run_python_file,
-        schema_write_file,
-    ]
-)
 
 
 def call_function(function_call_part, verbose=False, dry_run=True):
+    """Dispatch function calls safely with optional dry_run mode."""
     if verbose:
-        print(
-            f" - Calling function: {function_call_part.name}({function_call_part.args})"
-        )
+        print(f"Calling function: {function_call_part.name}({function_call_part.args})")
     else:
         print(f" - Calling function: {function_call_part.name}")
 
@@ -99,20 +27,26 @@ def call_function(function_call_part, verbose=False, dry_run=True):
         elif function_name == "get_file_content":
             result = get_file_content(**args)
 
-        elif function_name == "write_file":
-            if dry_run:
+        elif function_name == "write_file_content":
+            target = args.get("file_path") or args.get("filename")
+            if is_blocked_path(target, args.get("working_directory")):
+                result = f"❌ Access denied: {target} is protected."
+            elif dry_run:
                 result = "❌ Write blocked (safe mode enabled)."
             else:
                 warning = "⚠️ Unsafe action: writing to a file."
-                file_result = write_file(**args)
+                file_result = write_file_content(**args)
                 result = f"{warning}\n{file_result}"
 
-        elif function_name == "run_python_file":
-            if dry_run:
+        elif function_name == "run_python":
+            target = args.get("file_path") or args.get("filename")
+            if is_blocked_path(target, args.get("working_directory")):
+                result = f"❌ Access denied: {target} is protected."
+            elif dry_run:
                 result = "❌ Execution blocked (safe mode enabled)."
             else:
                 warning = "⚠️ Unsafe action: executing Python code."
-                exec_result = run_python_file(**args)
+                exec_result = run_python(**args)
                 result = f"{warning}\n{exec_result}"
 
         else:
@@ -126,4 +60,79 @@ def call_function(function_call_part, verbose=False, dry_run=True):
         parts=[
             types.Part.from_function_response(
                 name=function_name,
-                respo
+                response={"result": result},
+            )
+        ],
+    )
+
+
+# Available tool declarations for Gemini
+available_functions = types.Tool(
+    function_declarations=[
+        types.FunctionDeclaration(
+            name="get_files_info",
+            description="List files in a directory",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "directory": types.Schema(
+                        type=types.Type.STRING,
+                        description="The directory to list files from, relative to the working directory.",
+                    )
+                },
+                required=["directory"],
+            ),
+        ),
+        types.FunctionDeclaration(
+            name="get_file_content",
+            description="Read contents of a file",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "file_path": types.Schema(
+                        type=types.Type.STRING,
+                        description="Path to the file to read, relative to the working directory.",
+                    )
+                },
+                required=["file_path"],
+            ),
+        ),
+        types.FunctionDeclaration(
+            name="write_file_content",
+            description="Write/overwrite a file (UNSAFE)",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "file_path": types.Schema(
+                        type=types.Type.STRING,
+                        description="Path to the file to write.",
+                    ),
+                    "content": types.Schema(
+                        type=types.Type.STRING,
+                        description="Content to write to the file.",
+                    ),
+                },
+                required=["file_path", "content"],
+            ),
+        ),
+        types.FunctionDeclaration(
+            name="run_python",
+            description="Execute a Python file with optional args (UNSAFE)",
+            parameters=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    "file_path": types.Schema(
+                        type=types.Type.STRING,
+                        description="Path to the Python file to execute.",
+                    ),
+                    "args": types.Schema(
+                        type=types.Type.ARRAY,
+                        items=types.Schema(type=types.Type.STRING),
+                        description="Optional arguments to pass to the Python file.",
+                    ),
+                },
+                required=["file_path"],
+            ),
+        ),
+    ]
+)
